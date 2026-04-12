@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Route ───────────────────────────────────────────────────
+model Route {
+  id              String   @id @default(uuid())
+  shipName        String
+  departurePort   String
+  arrivalPort     String
+  distance        Float
+  fuelType        String
+  fuelConsumption Float
+  startDate       DateTime
+  endDate         DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  compliance ShipCompliance[]
+
+  @@map("routes")
+}
+
+// ─── Ship Compliance ─────────────────────────────────────────
+model ShipCompliance {
+  id                 String   @id @default(uuid())
+  routeId            String
+  shipName           String
+  actualGHGIntensity Float
+  targetGHGIntensity Float
+  energy             Float
+  complianceBalance  Float
+  status             ComplianceStatus
+  year               Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@map("ship_compliances")
+}
+
+enum ComplianceStatus {
+  SURPLUS
+  DEFICIT
+  COMPLIANT
+}
+
+// ─── Bank Entry ──────────────────────────────────────────────
+model BankEntry {
+  id        String        @id @default(uuid())
+  shipName  String
+  amount    Float
+  year      Int
+  type      BankEntryType
+  createdAt DateTime      @default(now())
+
+  @@map("bank_entries")
+}
+
+enum BankEntryType {
+  BANK
+  APPLY
+}
+
+// ─── Pool ────────────────────────────────────────────────────
+model Pool {
+  id        String       @id @default(uuid())
+  name      String
+  year      Int
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  members PoolMember[]
+
+  @@map("pools")
+}
+
+// ─── Pool Member ─────────────────────────────────────────────
+model PoolMember {
+  id                String   @id @default(uuid())
+  poolId            String
+  shipName          String
+  complianceBalance Float
+  contributedAmount Float    @default(0)
+  createdAt         DateTime @default(now())
+
+  pool Pool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@map("pool_members")
+}
