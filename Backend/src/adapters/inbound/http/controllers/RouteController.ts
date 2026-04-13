@@ -31,7 +31,13 @@ export class RouteController {
   public getRoutes = async (req: Request, res: Response): Promise<void> => {
     try {
       const routes = await this.routeRepo.findAll();
-      const baselineId = this.baselineRouteId ?? routes.find((route) => route.isBaseline)?.routeId ?? routes[0]?.routeId ?? null;
+      const baselineId =
+        this.baselineRouteId ??
+        routes.find((route) => route.isBaseline)?.id ??
+        routes.find((route) => route.isBaseline)?.routeId ??
+        routes[0]?.id ??
+        routes[0]?.routeId ??
+        null;
 
       const normalized = routes.map((route) => ({
         id: route.id,
@@ -119,8 +125,10 @@ export class RouteController {
         actualGHGIntensity: this.resolveGhgIntensity(route.id, route.shipName),
       }));
 
-      const baselineId = (req.query.baselineId as string) || this.baselineRouteId || routes[0].routeId || routes[0].id;
-      const baselineRouteWithIntensity = routesWithIntensity.find(r => (r.route.routeId || r.route.id) === baselineId) || routesWithIntensity[0];
+      const baselineId = (req.query.baselineId as string) || this.baselineRouteId || routes[0].id || routes[0].routeId;
+      const baselineRouteWithIntensity =
+        routesWithIntensity.find((r) => r.route.id === baselineId || r.route.routeId === baselineId) ||
+        routesWithIntensity[0];
 
       const result = compareRoutes(baselineRouteWithIntensity, routesWithIntensity, TARGET_GHG_INTENSITY_2025);
       
