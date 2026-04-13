@@ -8,8 +8,7 @@ interface BaselineContextType {
 const BaselineContext = createContext<BaselineContextType | undefined>(undefined);
 
 export function BaselineProvider({ children }: { children: ReactNode }) {
-  // Using RTR-002 as the default mock baseline
-  const [baselineRouteId, setBaselineRouteId] = useState<string | null>('RTR-002');
+  const [baselineRouteId, setBaselineRouteId] = useState<string | null>(null);
 
   return (
     <BaselineContext.Provider value={{ baselineRouteId, setBaselineRouteId }}>
