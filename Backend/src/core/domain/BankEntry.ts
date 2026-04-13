@@ -10,6 +10,7 @@ export type BankEntryType = 'BANK' | 'APPLY';
 
 export interface BankEntry {
   id: string;
+  shipId: string;
   shipName: string;
   amount: number;
   year: number;

@@ -20,8 +20,8 @@ export function setupRoutes(): Router {
 
   // Instantiate Controllers with injected dependencies
   const routeController = new RouteController(routeRepo);
-  const complianceController = new ComplianceController(complianceRepo, routeRepo);
-  const bankingController = new BankingController(bankRepo, complianceRepo);
+  const complianceController = new ComplianceController(complianceRepo, routeRepo, bankRepo);
+  const bankingController = new BankingController(bankRepo, complianceRepo, routeRepo);
   const poolingController = new PoolingController(poolRepo);
 
   // ─── Map HTTP Endpoints to Controller Methods ─────────────────
@@ -29,16 +29,21 @@ export function setupRoutes(): Router {
   // Route points
   router.get('/routes', routeController.getRoutes);
   router.post('/routes/:id/baseline', routeController.createBaseline);
-  router.post('/routes/comparison', routeController.getComparison); // Changed to post standardizing input body
+  router.get('/routes/comparison', routeController.getComparison);
+  router.post('/routes/comparison', routeController.getComparison);
 
   // Compliance points
   router.get('/compliance/cb', complianceController.getComplianceBalance);
+  router.get('/compliance/adjusted-cb', complianceController.getAdjustedComplianceBalance);
 
   // Banking points
+  router.get('/banking/records', bankingController.getRecords);
+  router.get('/banking/totals', bankingController.getTotals);
   router.post('/banking/bank', bankingController.bankSurplus);
   router.post('/banking/apply', bankingController.applyBanked);
 
   // Pooling points
+  router.get('/pools', poolingController.getPools);
   router.post('/pools', poolingController.createPool);
 
   return router;
