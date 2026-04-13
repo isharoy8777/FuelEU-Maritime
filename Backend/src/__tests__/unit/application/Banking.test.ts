@@ -11,10 +11,12 @@ function makeMockBankRepo(overrides: Partial<BankRepository> = {}): BankReposito
   return {
     findAll: jest.fn().mockResolvedValue([]),
     findById: jest.fn().mockResolvedValue(null),
+    findByShipId: jest.fn().mockResolvedValue([]),
     findByShipName: jest.fn().mockResolvedValue([]),
     findByYear: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue({
       id: 'entry-1',
+      shipId: 'MV TestShip',
       shipName: 'MV TestShip',
       amount: 100,
       year: 2025,
@@ -74,6 +76,7 @@ describe('BankSurplusUseCase', () => {
 
       // Assert
       expect(bankRepo.create).toHaveBeenCalledWith({
+        shipId: 'MV TestShip',
         shipName: 'MV TestShip',
         year: 2025,
         amount: 100_000,
@@ -148,6 +151,7 @@ describe('ApplyBankedUseCase', () => {
         getBalance: jest.fn().mockResolvedValue(200_000),
         create: jest.fn().mockResolvedValue({
           id: 'entry-2',
+          shipId: 'MV TestShip',
           shipName: 'MV TestShip',
           amount: 50_000,
           year: 2025,
@@ -163,7 +167,7 @@ describe('ApplyBankedUseCase', () => {
 
       // Assert
       expect(bankRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'APPLY', amount: 50_000 })
+        expect.objectContaining({ type: 'APPLY', amount: 50_000, shipId: 'MV TestShip' })
       );
       expect(result.type).toBe('APPLY');
     });

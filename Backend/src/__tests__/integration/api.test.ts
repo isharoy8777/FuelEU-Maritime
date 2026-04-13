@@ -46,6 +46,7 @@ const sampleCompliance = {
 
 const sampleBankEntry = {
   id: 'entry-1',
+  shipId: 'route-1',
   shipName: 'MV TestShip',
   amount: 100_000,
   year: 2025,
@@ -93,6 +94,7 @@ describe('Integration Tests — FuelEU Maritime API', () => {
     (PostgresBankRepository as jest.Mock).mockImplementation(() => ({
       findAll: jest.fn().mockResolvedValue([sampleBankEntry]),
       findById: jest.fn().mockResolvedValue(sampleBankEntry),
+      findByShipId: jest.fn().mockResolvedValue([sampleBankEntry]),
       findByShipName: jest.fn().mockResolvedValue([sampleBankEntry]),
       findByYear: jest.fn().mockResolvedValue([sampleBankEntry]),
       create: jest.fn().mockResolvedValue({ ...sampleBankEntry, type: 'BANK' }),
@@ -166,7 +168,7 @@ describe('Integration Tests — FuelEU Maritime API', () => {
 
   describe('POST /api/v1/banking/bank', () => {
     it('should return 200 when banking a valid surplus', async () => {
-      const body = { shipName: 'MV TestShip', year: 2025, amount: 100_000 };
+      const body = { shipId: 'route-1', shipName: 'MV TestShip', year: 2025, amount: 100_000 };
 
       const res = await request(app).post('/api/v1/banking/bank').send(body);
 
@@ -187,7 +189,7 @@ describe('Integration Tests — FuelEU Maritime API', () => {
   describe('POST /api/v1/banking/apply', () => {
     it('should return 400 if ship has no deficit', async () => {
       // The mock compliance returns SURPLUS (positive CB), so ApplyBanked should reject
-      const body = { shipName: 'MV TestShip', year: 2025, amount: 50_000 };
+      const body = { shipId: 'route-1', shipName: 'MV TestShip', year: 2025, amount: 50_000 };
 
       const res = await request(app).post('/api/v1/banking/apply').send(body);
 
