@@ -4,16 +4,22 @@
  */
 export interface Route {
   id: string;
+  routeId?: string;
   shipName: string;
-  departurePort: string;
-  arrivalPort: string;
-  distance: number;
+  vesselType?: string;
   fuelType: string;
+  year?: number;
+  ghgIntensity?: number;
   fuelConsumption: number;
-  startDate: Date;
-  endDate: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  distance: number;
+  totalEmissions?: number;
+  isBaseline?: boolean;
+  departurePort?: string;
+  arrivalPort?: string;
+  startDate?: Date;
+  endDate?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export type CreateRouteInput = Omit<Route, 'id' | 'createdAt' | 'updatedAt'>;

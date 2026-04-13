@@ -8,7 +8,11 @@ export class PostgresRouteRepository implements RouteRepository {
   }
 
   async findById(id: string): Promise<Route | null> {
-    return prisma.route.findUnique({ where: { id } });
+    return prisma.route.findFirst({
+      where: {
+        OR: [{ id }, { routeId: id }],
+      },
+    });
   }
 
   async create(data: CreateRouteInput): Promise<Route> {
