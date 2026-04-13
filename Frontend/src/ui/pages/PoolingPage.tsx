@@ -10,23 +10,32 @@ import type { Pool } from '../../shared/types';
 
 export function PoolingPage() {
   const fetchCompareFn = useCallback(() => getAdjustedCB(2025), []);
-  const { status, data, error } = useAsync(fetchCompareFn);
+  const { status, data, error, execute: refreshAdjusted } = useAsync(fetchCompareFn);
   const { data: pools, execute: refreshPools } = useAsync(useCallback(() => getPools(), []));
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+  const [activePoolId, setActivePoolId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+
+  const activePoolAdjustments = useMemo(() => {
+    if (!activePoolId || !pools) return new Map<string, number>();
+    const activePool = pools.find((pool) => pool.id === activePoolId);
+    if (!activePool?.memberDetails) return new Map<string, number>();
+
+    return new Map(activePool.memberDetails.map((member) => [member.shipId, member.cbAfter]));
+  }, [activePoolId, pools]);
 
   const shipsWithCB = useMemo(() => {
     if (!data) return [];
     return data.map(c => ({
       id: c.shipId,
       vesselName: c.shipName,
-      cbBefore: c.cbAfter,
-      isSurplus: c.cbAfter >= 0,
+      cbBefore: activePoolAdjustments.get(c.shipId) ?? c.cbAfter,
+      isSurplus: (activePoolAdjustments.get(c.shipId) ?? c.cbAfter) >= 0,
     }));
-  }, [data]);
+  }, [data, activePoolAdjustments]);
 
   const toggleSelection = (id: string) => {
     const next = new Set(selectedIds);
@@ -87,7 +96,7 @@ export function PoolingPage() {
 
     setIsMutating(true);
     try {
-      await createPoolAPI({
+      const createdPool = await createPoolAPI({
         name: `Pool ${new Date().toISOString().slice(0, 10)}`,
         year: 2025,
         members: selectedShips.map((ship) => ({
@@ -97,7 +106,9 @@ export function PoolingPage() {
         })),
       });
 
+      setActivePoolId(createdPool.id);
       await refreshPools();
+      await refreshAdjusted();
       setFeedback({ message: `Successfully created pool dynamically via Network.`, type: 'success' });
       setSelectedIds(new Set());
     } catch (e: any) {

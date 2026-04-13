@@ -1,31 +1,41 @@
 # FuelEU Maritime
 
-Minimal full-stack FuelEU Maritime compliance platform with a React + TypeScript + TailwindCSS frontend and a Node.js + TypeScript + PostgreSQL backend.
+Full-stack FuelEU Maritime compliance dashboard built with React + TypeScript frontend and Node.js + TypeScript + Prisma backend.
 
-## Overview
+## Project Status
 
-The project models FuelEU Maritime route compliance, comparison, banking, and pooling flows with a hexagonal architecture:
+Project implementation is complete for the core assignment flows:
 
-- Core domain and use-cases stay framework-free.
-- HTTP and database adapters sit at the edges.
-- The frontend consumes API contracts from the backend and renders the dashboard tabs.
+- Routes baseline selection
+- Compare against selected baseline
+- Banking surplus/apply actions
+- Pooling redistribution with persisted pool members
 
-## Architecture Summary
+## Final Data-Effect Rules
+
+The implementation follows this page-level data contract:
+
+- Routes: changing baseline affects Compare only
+- Compare: read-only, no writes
+- Banking: updates banking/compliance state and impacts Pooling inputs
+- Pooling: performs redistribution for pooling view/history and does not rewrite Compare baseline/raw data
+
+## Architecture
 
 ### Backend
 
-- `Backend/src/core` — domain entities, application use-cases, and ports
-- `Backend/src/adapters/inbound/http` — Express controllers
-- `Backend/src/adapters/outbound/postgres` — Prisma repositories
-- `Backend/src/infrastructure` — server/bootstrap and DB wiring
+- Backend/src/core: domain models, use-cases, ports
+- Backend/src/adapters/inbound/http: Express controllers
+- Backend/src/adapters/outbound/postgres: Prisma repositories
+- Backend/src/infrastructure: app bootstrap, routing, DB client
 
 ### Frontend
 
-- `Frontend/src/ui` — React pages, layout, context, and reusable components
-- `Frontend/src/adapters/api` — API client
-- `Frontend/src/shared` — types and hooks
+- Frontend/src/ui/pages: Routes, Compare, Banking, Pooling
+- Frontend/src/adapters/api: typed API client
+- Frontend/src/shared: app types and async hooks
 
-## Setup & Run
+## Run Locally
 
 ### Backend
 
@@ -43,77 +53,43 @@ npm install
 npm run dev
 ```
 
-## Tests
-
-### Backend
+## Verify
 
 ```bash
 cd Backend
 npm test
 ```
 
-### Frontend
-
 ```bash
 cd Frontend
 npm run build
 ```
 
-## Sample API Requests
+## API Endpoints
 
-### Routes
+### Routes + Compare
 
-`GET /api/v1/routes`
-
-Response shape:
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "R001",
-      "routeId": "R001",
-      "vesselName": "Container Alpha",
-      "vesselType": "Container",
-      "fuelType": "HFO",
-      "year": 2024,
-      "ghgIntensity": 91,
-      "fuelConsumption": 5000,
-      "distance": 12000,
-      "totalEmissions": 4500,
-      "isBaseline": true
-    }
-  ]
-}
-```
-
-### Comparison
-
-`GET /api/v1/routes/comparison?baselineId=R001`
+- GET /api/v1/routes
+- POST /api/v1/routes/:id/baseline
+- GET /api/v1/routes/comparison?baselineId=<shipId>
 
 ### Banking
 
-- `GET /api/v1/compliance/cb?shipId=R001&year=2024`
-- `GET /api/v1/banking/records?shipId=R001&year=2024`
-- `POST /api/v1/banking/bank`
-- `POST /api/v1/banking/apply`
+- GET /api/v1/compliance/cb?shipId=<shipId>&year=<year>
+- GET /api/v1/banking/records?shipId=<shipId>&year=<year>
+- GET /api/v1/banking/totals?year=<year>
+- POST /api/v1/banking/bank
+- POST /api/v1/banking/apply
 
 ### Pooling
 
-- `GET /api/v1/compliance/adjusted-cb?year=2025`
-- `POST /api/v1/pools`
-
-## Screenshots / Sample Output
-
-No screenshots are included in this repository snapshot. The frontend dashboard exposes the four required tabs:
-
-- Routes
-- Compare
-- Banking
-- Pooling
+- GET /api/v1/compliance/adjusted-cb?year=<year>
+- GET /api/v1/pools
+- POST /api/v1/pools
 
 ## Notes
 
-- The backend currently supports the existing integration tests and the assignment-aligned frontend payloads.
-- Seed data is aligned to the five-route dataset from the brief.
+- Baseline selection is persisted in routes and consumed by compare.
+- Compare uses original route data and baseline reference.
+- Banking actions persist compliance delta updates and are reflected in adjusted CB feeds.
+- Pooling stores member-level cbBefore/cbAfter redistribution snapshots.
