@@ -1,27 +1,32 @@
-import { useState, useMemo } from 'react';
-import { Users, Layers, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { Users, Layers, AlertCircle, CheckCircle2, Clock, Loader2, X } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Table } from '../components/Table';
-import { mockRoutes } from '../../api/mock';
-import { useAppContext } from '../context/AppContext';
-
-const TARGET_GHG = 89.3368;
+import { getAdjustedCB, createPool as createPoolAPI, getPools } from '../../adapters/api/client';
+import { useAsync } from '../../shared/hooks';
+import type { Pool } from '../../shared/types';
 
 export function PoolingPage() {
-  const { pools, addPool } = useAppContext();
-  
-  // Calculate dynamic CB for all routes
-  const shipsWithCB = useMemo(() => {
-    return mockRoutes.map(r => {
-      const cb = Math.floor((TARGET_GHG - r.ghgIntensity) * r.fuelConsumption * 123.4);
-      return { ...r, cbBefore: cb, isSurplus: cb >= 0 };
-    });
-  }, []);
+  const fetchCompareFn = useCallback(() => getAdjustedCB(2025), []);
+  const { status, data, error } = useAsync(fetchCompareFn);
+  const { data: pools, execute: refreshPools } = useAsync(useCallback(() => getPools(), []));
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+
+  const shipsWithCB = useMemo(() => {
+    if (!data) return [];
+    return data.map(c => ({
+      id: c.shipId,
+      vesselName: c.shipName,
+      cbBefore: c.cbAfter,
+      isSurplus: c.cbAfter >= 0,
+    }));
+  }, [data]);
 
   const toggleSelection = (id: string) => {
     const next = new Set(selectedIds);
@@ -70,7 +75,7 @@ export function PoolingPage() {
     return list;
   }, [selectedShips, isValidPool]);
 
-  const handleCreatePool = () => {
+  const handleCreatePool = async () => {
     if (selectedIds.size < 2) {
       setFeedback({ message: 'Select at least 2 ships to form a pool.', type: 'error' });
       return;
@@ -80,20 +85,45 @@ export function PoolingPage() {
       return;
     }
 
-    const newPool = {
-      id: `POOL-${Date.now().toString().slice(-6)}`,
-      name: `Fleet Group ${pools.length + 1}`,
-      year: 2025,
-      members: selectedIds.size,
-      totalCB: totalCb,
-      status: 'VALID' as const,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
+    setIsMutating(true);
+    try {
+      await createPoolAPI({
+        name: `Pool ${new Date().toISOString().slice(0, 10)}`,
+        year: 2025,
+        members: selectedShips.map((ship) => ({
+          shipId: ship.id,
+          shipName: ship.vesselName,
+          complianceBalance: ship.cbBefore,
+        })),
+      });
 
-    addPool(newPool);
-    setFeedback({ message: `Successfully created ${newPool.name} with ${selectedIds.size} ships.`, type: 'success' });
-    setSelectedIds(new Set());
+      await refreshPools();
+      setFeedback({ message: `Successfully created pool dynamically via Network.`, type: 'success' });
+      setSelectedIds(new Set());
+    } catch (e: any) {
+      setFeedback({ message: e.message || 'Error creating pool', type: 'error' });
+    } finally {
+      setIsMutating(false);
+    }
   };
+
+  if (status === 'pending') {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-gray-500">
+        <Loader2 size={32} className="animate-spin mb-4 text-indigo-500" />
+        <p>Analyzing routes to gather Live CB values for pooling...</p>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-red-500 bg-red-50 rounded-xl border border-red-100">
+        <AlertCircle size={32} className="mb-4" />
+        <p className="font-semibold text-lg">{error || 'Failed to fetch global routes'}</p>
+      </div>
+    );
+  }
 
 
   const selectionColumns = [
@@ -109,7 +139,7 @@ export function PoolingPage() {
     { key: 'vesselName', header: 'Vessel' },
     { key: 'cbBefore', header: 'CB Before', align: 'right' as const, render: (s: any) => (
       <span className={s.isSurplus ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>
-        {s.isSurplus ? '+' : ''}{s.cbBefore.toLocaleString()}
+        {s.isSurplus ? '+' : ''}{(s.cbBefore ?? 0).toLocaleString()}
       </span>
     )},
     { key: 'status', header: 'Status', align: 'center' as const, render: (s: any) => (
@@ -122,7 +152,9 @@ export function PoolingPage() {
     { key: 'year', header: 'Year', align: 'center' as const },
     { key: 'members', header: 'Members', align: 'center' as const },
     { key: 'totalCB', header: 'Total Net CB', align: 'right' as const, render: (p: any) => (
-      <span className="text-emerald-700 font-bold">+{p.totalCB.toLocaleString()}</span>
+      <span className={p.totalCB >= 0 ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+        {p.totalCB >= 0 ? '+' : ''}{p.totalCB.toLocaleString()}
+      </span>
     )},
     { key: 'status', header: 'Status', align: 'center' as const, render: (p: any) => <Badge variant={p.status} /> },
     { key: 'createdAt', header: 'Created', render: (p: any) => (
@@ -194,7 +226,7 @@ export function PoolingPage() {
                          </div>
                       </div>
                     ))}
-                    <Button onClick={handleCreatePool} className="w-full mt-4 h-11" variant={isValidPool ? 'primary' : 'danger'}>
+                    <Button onClick={handleCreatePool} className="w-full mt-4 h-11" variant={isValidPool ? 'primary' : 'danger'} disabled={isMutating}>
                       {isValidPool ? 'Create Valid Pool' : 'Invalid Pool'}
                     </Button>
                   </div>
@@ -213,9 +245,61 @@ export function PoolingPage() {
       <h3 className="font-bold text-gray-800 text-lg mt-8 pt-4 border-t border-gray-200">Historical Fleet Pools</h3>
       <Card padding={false}>
          <div className="p-4">
-            <Table columns={poolColumns} data={pools} keyExtractor={(p) => p.id} />
+            <Table columns={poolColumns} data={pools || []} keyExtractor={(p) => p.id} onRowClick={(p) => setSelectedPool(p as Pool)} />
          </div>
       </Card>
+
+      {selectedPool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" onClick={() => setSelectedPool(null)}>
+          <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">{selectedPool.name} Members</h3>
+                <p className="text-xs text-gray-500">Year {selectedPool.year} • {selectedPool.members} members</p>
+              </div>
+              <button className="rounded-md p-2 text-gray-500 hover:bg-gray-100" onClick={() => setSelectedPool(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              {selectedPool.memberDetails && selectedPool.memberDetails.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedPool.memberDetails.map((member) => (
+                    <div key={member.id} className="grid grid-cols-12 gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm">
+                      <div className="col-span-12 md:col-span-3">
+                        <p className="text-xs text-gray-500">Ship</p>
+                        <p className="font-semibold text-gray-800">{member.shipName}</p>
+                        <p className="font-mono text-xs text-gray-500">{member.shipId}</p>
+                      </div>
+                      <div className="col-span-6 md:col-span-2">
+                        <p className="text-xs text-gray-500">CB Before</p>
+                        <p className={member.cbBefore >= 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-red-600'}>
+                          {member.cbBefore >= 0 ? '+' : ''}{member.cbBefore.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="col-span-6 md:col-span-2">
+                        <p className="text-xs text-gray-500">CB After</p>
+                        <p className={member.cbAfter >= 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-red-600'}>
+                          {member.cbAfter >= 0 ? '+' : ''}{member.cbAfter.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="col-span-6 md:col-span-3">
+                        <p className="text-xs text-gray-500">Contributed</p>
+                        <p className="font-semibold text-gray-800">{member.contributedAmount.toLocaleString()}</p>
+                      </div>
+                      <div className="col-span-6 md:col-span-2 flex items-end justify-start md:justify-end">
+                        <Badge variant={member.status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-10 text-center text-sm text-gray-500">No member details available for this pool.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
