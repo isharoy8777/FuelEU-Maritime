@@ -20,8 +20,10 @@ export interface Pool {
 export interface PoolMember {
   id: string;
   poolId: string;
+  shipId: string;
   shipName: string;
-  complianceBalance: number;
+  cbBefore: number;
+  cbAfter: number;
   contributedAmount: number;
   createdAt: Date;
 }

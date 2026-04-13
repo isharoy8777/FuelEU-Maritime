@@ -5,12 +5,14 @@ import { PoolRepository } from '../ports/PoolRepository';
 
 /** A member input for pool creation. */
 export interface PoolMemberInput {
+  shipId?: string;
   shipName: string;
   complianceBalance: number;
 }
 
 /** Result for a single member after pool redistribution. */
 export interface PoolAllocation {
+  shipId: string;
   shipName: string;
   cbBefore: number;
   cbAfter: number;
@@ -69,6 +71,7 @@ export class CreatePoolUseCase {
     // ── Greedy redistribution ─────────────────────────────────
     // Work on mutable copies sorted by CB descending
     const allocations: PoolAllocation[] = members.map((m) => ({
+      shipId: m.shipId ?? m.shipName,
       shipName: m.shipName,
       cbBefore: m.complianceBalance,
       cbAfter: m.complianceBalance,
@@ -109,8 +112,10 @@ export class CreatePoolUseCase {
     for (const alloc of allocations) {
       await this.poolRepo.addMember({
         poolId: pool.id,
+        shipId: alloc.shipId,
         shipName: alloc.shipName,
-        complianceBalance: alloc.cbAfter,
+        cbBefore: alloc.cbBefore,
+        cbAfter: alloc.cbAfter,
         contributedAmount: alloc.contributedAmount,
       });
     }

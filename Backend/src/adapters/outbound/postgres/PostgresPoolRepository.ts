@@ -29,7 +29,16 @@ export class PostgresPoolRepository implements PoolRepository {
   }
 
   async addMember(data: CreatePoolMemberInput): Promise<Pool> {
-    const member = await prisma.poolMember.create({ data });
+    const member = await prisma.poolMember.create({
+      data: {
+        poolId: data.poolId,
+        shipId: data.shipId,
+        shipName: data.shipName,
+        cbBefore: data.cbBefore,
+        cbAfter: data.cbAfter,
+        contributedAmount: data.contributedAmount,
+      },
+    });
     const pool = await this.findById(member.poolId);
     if (!pool) throw new Error(`Pool with id ${member.poolId} not found after member creation`);
     return pool;

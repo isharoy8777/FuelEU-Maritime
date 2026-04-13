@@ -11,6 +11,10 @@ export class PostgresBankRepository implements BankRepository {
     return prisma.bankEntry.findUnique({ where: { id } });
   }
 
+  async findByShipId(shipId: string): Promise<BankEntry[]> {
+    return prisma.bankEntry.findMany({ where: { shipId } });
+  }
+
   async findByShipName(shipName: string): Promise<BankEntry[]> {
     return prisma.bankEntry.findMany({ where: { shipName } });
   }
@@ -20,11 +24,19 @@ export class PostgresBankRepository implements BankRepository {
   }
 
   async create(data: CreateBankEntryInput): Promise<BankEntry> {
-    return prisma.bankEntry.create({ data });
+    return prisma.bankEntry.create({
+      data: {
+        shipId: data.shipId,
+        shipName: data.shipName,
+        amount: data.amount,
+        year: data.year,
+        type: data.type,
+      },
+    });
   }
 
-  async getBalance(shipName: string): Promise<number> {
-    const entries = await prisma.bankEntry.findMany({ where: { shipName } });
+  async getBalance(shipId: string): Promise<number> {
+    const entries = await prisma.bankEntry.findMany({ where: { shipId } });
     return entries.reduce((acc, entry) => {
       if (entry.type === 'BANK') return acc + entry.amount;
       if (entry.type === 'APPLY') return acc - entry.amount;

@@ -1,31 +1,90 @@
-import { useState } from 'react';
-import { TrendingUp, Wallet, ArrowDownCircle, Clock } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { TrendingUp, Wallet, ArrowDownCircle, Clock, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 import { Card, KpiCard } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Table } from '../components/Table';
-import { mockRoutes } from '../../api/mock';
-import type { BankEntry } from '../../shared/types';
-import { useAppContext } from '../context/AppContext';
-import { useBaseline } from '../context/BaselineContext';
-
-const TARGET_GHG = 89.3368;
+import type { BankEntry, BankingFleetTotal } from '../../shared/types';
+import { getComplianceCB, bankSurplus, applyBanked, getBankRecords, getBankTotals, getRoutes } from '../../adapters/api/client';
+import { useAsync } from '../../shared/hooks';
 
 export function BankingPage() {
-  const { bankedCredits, setBankedCredits, bankHistory, addBankHistory } = useAppContext();
-  const { baselineRouteId } = useBaseline();
-  
-  const ship = mockRoutes.find((r) => r.id === baselineRouteId) || mockRoutes[0];
-  
-  // Calculate dynamic CB
-  const cbBefore = Math.floor((TARGET_GHG - ship.ghgIntensity) * ship.fuelConsumption * 123.4);
-  const isSurplus = cbBefore > 0;
-
+  const [selectedShipId, setSelectedShipId] = useState('');
   const [bankFormAmount, setBankFormAmount] = useState('');
-  const [applyFormAmount, setApplyFormAmount] = useState('');
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
 
-  const handleBank = () => {
+  const fetchRoutesFn = useCallback(() => getRoutes(), []);
+  const { status: routesStatus, data: routes = [], error: routesError } = useAsync(fetchRoutesFn);
+  const safeRoutes = routes ?? [];
+
+  useEffect(() => {
+    if (!selectedShipId && safeRoutes.length > 0) {
+      setSelectedShipId(safeRoutes[0].id);
+    }
+  }, [safeRoutes, selectedShipId]);
+
+  const selectedRoute = safeRoutes.find((route) => route.id === selectedShipId) || null;
+  const selectedYear = selectedRoute?.year ?? 2025;
+
+  const fetchCbFn = useCallback(() => {
+    if (!selectedShipId) return Promise.resolve({ cbBefore: 0 });
+    return getComplianceCB(selectedShipId, selectedYear);
+  }, [selectedShipId, selectedYear]);
+  const { status, data, error, execute: refreshCb } = useAsync(fetchCbFn, !!selectedShipId);
+
+  const fetchRecordsFn = useCallback(() => {
+    if (!selectedShipId) return Promise.resolve([]);
+    return getBankRecords(selectedShipId, selectedYear);
+  }, [selectedShipId, selectedYear]);
+  const { data: liveHistory, execute: refreshRecords } = useAsync(fetchRecordsFn, !!selectedShipId);
+
+  const fetchTotalsFn = useCallback(() => getBankTotals(selectedYear), [selectedYear]);
+  const { data: fleetTotals, execute: refreshTotals } = useAsync(fetchTotalsFn, !!selectedShipId);
+
+  if (routesStatus === 'pending' || (status === 'pending' && !data)) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-gray-500">
+        <Loader2 size={32} className="animate-spin mb-4 text-indigo-500" />
+        <p>Loading ships and live compliance data...</p>
+      </div>
+    );
+  }
+
+  if (routesStatus === 'error') {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-red-500 bg-red-50 rounded-xl border border-red-100">
+        <AlertCircle size={32} className="mb-4" />
+        <p className="font-semibold text-lg">{routesError || 'Failed to load routes'}</p>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-red-500 bg-red-50 rounded-xl border border-red-100">
+        <AlertCircle size={32} className="mb-4" />
+        <p className="font-semibold text-lg">{error || 'Failed to calculate compliance balance'}</p>
+      </div>
+    );
+  }
+
+  const cbBefore = Math.floor(data?.cbBefore || 0);
+  const isSurplus = cbBefore > 0;
+  const shipName = selectedRoute?.vesselName || 'Select a ship';
+  const displayHistory = liveHistory || [];
+  const totalBanked = displayHistory
+    .filter((entry) => entry.type === 'BANK')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const appliedAmount = displayHistory
+    .filter((entry) => entry.type === 'APPLY')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const bankedCreditsAvailable = totalBanked - appliedAmount;
+  const cbAfter = cbBefore - totalBanked + appliedAmount;
+  const actionMode = isSurplus ? 'BANK' : 'APPLY';
+  const commonBankedAvailable = (fleetTotals || []).reduce((sum, row) => sum + row.bankedAvailable, 0);
+
+  const handleBank = async () => {
     const amt = parseInt(bankFormAmount, 10);
     if (isNaN(amt) || amt <= 0) {
       setFeedback({ message: 'Please enter a valid amount greater than 0', type: 'error' });
@@ -35,42 +94,48 @@ export function BankingPage() {
       setFeedback({ message: `Cannot bank more than available surplus (${cbBefore})`, type: 'error' });
       return;
     }
-    
-    setBankedCredits((prev) => prev + amt);
-    addBankHistory({
-      id: `BNK-${Date.now()}`,
-      shipName: ship.vesselName,
-      year: ship.year,
-      type: 'BANK',
-      amount: amt,
-      timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    });
-    setFeedback({ message: `Successfully banked ${amt.toLocaleString()} CB`, type: 'success' });
-    setBankFormAmount('');
+
+    setIsMutating(true);
+    try {
+      await bankSurplus({ shipId: selectedShipId, shipName, year: selectedYear, amount: amt });
+      await refreshRecords();
+      await refreshCb();
+      await refreshTotals();
+
+      setFeedback({ message: `Successfully banked ${amt.toLocaleString()} CB. Network confirmed.`, type: 'success' });
+      setBankFormAmount('');
+    } catch (e: any) {
+      setFeedback({ message: e.message || 'Operation failed on server', type: 'error' });
+    } finally {
+      setIsMutating(false);
+    }
   };
 
-  const handleApply = () => {
-    const amt = parseInt(applyFormAmount, 10);
+  const handleApply = async () => {
+    const amt = parseInt(bankFormAmount, 10);
     if (isNaN(amt) || amt <= 0) {
       setFeedback({ message: 'Please enter a valid amount greater than 0', type: 'error' });
       return;
     }
-    if (amt > bankedCredits) {
-      setFeedback({ message: `Cannot apply more than available banked credits (${bankedCredits})`, type: 'error' });
+    if (amt > bankedCreditsAvailable) {
+      setFeedback({ message: `Cannot apply more than available banked credits (${bankedCreditsAvailable})`, type: 'error' });
       return;
     }
 
-    setBankedCredits((prev) => prev - amt);
-    addBankHistory({
-      id: `BNK-${Date.now()}`,
-      shipName: ship.vesselName,
-      year: ship.year,
-      type: 'APPLY',
-      amount: amt,
-      timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    });
-    setFeedback({ message: `Successfully applied ${amt.toLocaleString()} CB to deficit`, type: 'success' });
-    setApplyFormAmount('');
+    setIsMutating(true);
+    try {
+      await applyBanked({ shipId: selectedShipId, shipName, year: selectedYear, amount: amt });
+      await refreshRecords();
+      await refreshCb();
+      await refreshTotals();
+
+      setFeedback({ message: `Successfully applied ${amt.toLocaleString()} CB via Network.`, type: 'success' });
+      setBankFormAmount('');
+    } catch (e: any) {
+      setFeedback({ message: e.message || 'Operation failed on server', type: 'error' });
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   const historyColumns = [
@@ -87,6 +152,17 @@ export function BankingPage() {
     )},
   ];
 
+  const fleetColumns = [
+    { key: 'shipName', header: 'Ship' },
+    { key: 'shipId', header: 'Ship ID', render: (row: BankingFleetTotal) => <span className="font-mono text-xs">{row.shipId}</span> },
+    { key: 'currentCB', header: 'Current CB', align: 'right' as const, render: (row: BankingFleetTotal) => (
+      <span className={row.currentCB >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold'}>
+        {row.currentCB >= 0 ? '+' : ''}{row.currentCB.toLocaleString()}
+      </span>
+    ) },
+    { key: 'year', header: 'Year', align: 'center' as const },
+  ];
+
   return (
     <div className="space-y-5">
       {feedback && (
@@ -96,13 +172,41 @@ export function BankingPage() {
         </div>
       )}
 
-      {/* Hero CB card */}
+      <Card>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-1">Selected Ship</p>
+            <div className="relative min-w-70 max-w-full">
+              <select
+                value={selectedShipId}
+                onChange={(e) => {
+                  setSelectedShipId(e.target.value);
+                  setFeedback(null);
+                  setBankFormAmount('');
+                }}
+                className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 pr-10 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              >
+                {safeRoutes.map((route) => (
+                  <option key={route.id} value={route.id}>
+                    {route.vesselName} · {route.id}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+          <div className={`px-4 py-2 rounded-full text-xs font-semibold ${isSurplus ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
+            {actionMode === 'BANK' ? 'Bank surplus available' : 'Apply banked credits'}
+          </div>
+        </div>
+      </Card>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className={`px-6 py-5 flex items-center justify-between ${isSurplus ? 'gradient-ocean' : 'gradient-red'}`}>
           <div>
-             <p className="text-white/70 text-sm font-medium uppercase tracking-wider">Current Ship Compliance Balance</p>
+            <p className="text-white/70 text-sm font-medium uppercase tracking-wider">Current Ship Compliance Balance</p>
             <p className="text-white text-4xl font-bold mt-1">{cbBefore >= 0 ? '+' : ''}{cbBefore.toLocaleString()} CB</p>
-            <p className="text-white/70 text-sm mt-1">Status: <span className="font-semibold text-white">{isSurplus ? 'SURPLUS' : 'DEFICIT'}</span> — {ship.vesselName}</p>
+            <p className="text-white/70 text-sm mt-1">Status: <span className="font-semibold text-white">{isSurplus ? 'SURPLUS' : 'DEFICIT'}</span> - {shipName} ({selectedYear})</p>
           </div>
           <div className="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center">
             {isSurplus ? <TrendingUp size={32} className="text-white" /> : <ArrowDownCircle size={32} className="text-white" />}
@@ -110,91 +214,70 @@ export function BankingPage() {
         </div>
       </div>
 
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-4">
-        <KpiCard title="Total Banked Credits Available" value={`+${bankedCredits.toLocaleString()}`} gradient="green" icon={<Wallet size={18} />} />
-        <KpiCard title="Ship CB Before Action" value={`${cbBefore >= 0 ? '+' : ''}${cbBefore.toLocaleString()}`} gradient={isSurplus ? 'blue' : 'amber'} />
+        <KpiCard title="cb_before" value={`${cbBefore >= 0 ? '+' : ''}${cbBefore.toLocaleString()}`} gradient={isSurplus ? 'blue' : 'amber'} />
+        <KpiCard title="applied" value={`-${appliedAmount.toLocaleString()}`} gradient="amber" />
+        <KpiCard title="cb_after" value={`${cbAfter >= 0 ? '+' : ''}${cbAfter.toLocaleString()}`} gradient={cbAfter >= 0 ? 'green' : 'red'} />
+        <KpiCard title="Common Banked Credits (Fleet)" value={`${commonBankedAvailable >= 0 ? '+' : ''}${commonBankedAvailable.toLocaleString()}`} gradient="green" icon={<Wallet size={18} />} />
       </div>
 
-      {/* Action Forms — 2 columns */}
-      <div className="grid grid-cols-2 gap-5">
-        {/* Bank Surplus */}
-        <Card>
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-9 h-9 gradient-ocean rounded-lg flex items-center justify-center flex-shrink-0">
-              <Wallet size={18} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Bank Surplus</h3>
-              <p className="text-xs text-gray-400">Store excess CB for future use</p>
-            </div>
+      <Card>
+        <div className="flex items-center gap-3 mb-5">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isSurplus ? 'gradient-ocean' : 'gradient-red'}`}>
+            {isSurplus ? <Wallet size={18} className="text-white" /> : <ArrowDownCircle size={18} className="text-white" />}
           </div>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Selected Ship</label>
-              <input type="text" value={ship.vesselName} disabled className="w-full px-3 py-2.5 text-sm bg-gray-100 text-gray-500 border border-gray-200 rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Amount to Bank (CB)</label>
-              <input
-                type="number"
-                placeholder="e.g. 50000"
-                value={bankFormAmount}
-                onChange={(e) => setBankFormAmount(e.target.value)}
-                disabled={!isSurplus}
-                className="w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-50"
-              />
-            </div>
-            <p className="text-xs text-gray-400">✓ Must be in surplus to bank.</p>
-            <Button onClick={handleBank} disabled={!isSurplus} className="w-full mt-1">
-              BANK SURPLUS
-            </Button>
+          <div>
+            <h3 className="font-bold text-gray-800">{isSurplus ? 'Bank Surplus' : 'Apply Banked Credits'}</h3>
+            <p className="text-xs text-gray-400">{isSurplus ? 'Store excess CB for future use' : 'Use stored CB to offset a deficit'}</p>
           </div>
-        </Card>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Selected Ship</label>
+            <input type="text" value={shipName} disabled className="w-full px-3 py-2.5 text-sm bg-gray-100 text-gray-500 border border-gray-200 rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Amount (CB)</label>
+            <input
+              type="number"
+              placeholder={isSurplus ? 'e.g. 50000' : 'e.g. 10000'}
+              value={bankFormAmount}
+              onChange={(e) => setBankFormAmount(e.target.value)}
+              className={`w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${isSurplus ? 'focus:ring-sky-300' : 'focus:ring-orange-300'}`}
+            />
+          </div>
+          <p className="text-xs text-gray-400">{isSurplus ? '✓ Must be in surplus to bank.' : '✓ Requires existing banked balance.'}</p>
+          <Button
+            variant={isSurplus ? 'primary' : 'danger'}
+            onClick={isSurplus ? handleBank : handleApply}
+            disabled={(isSurplus ? cbBefore <= 0 : bankedCreditsAvailable <= 0) || isMutating}
+            className="w-full mt-1"
+          >
+            {isSurplus ? 'BANK SURPLUS' : 'APPLY CREDITS'}
+          </Button>
+        </div>
+      </Card>
 
-        {/* Apply Banked Credits */}
-        <Card>
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-9 h-9 gradient-red rounded-lg flex items-center justify-center flex-shrink-0">
-              <ArrowDownCircle size={18} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Apply Banked Credits</h3>
-              <p className="text-xs text-gray-400">Use stored CB to offset a deficit</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Selected Ship</label>
-              <input type="text" value={ship.vesselName} disabled className="w-full px-3 py-2.5 text-sm bg-gray-100 text-gray-500 border border-gray-200 rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Amount to Apply (CB)</label>
-              <input
-                type="number"
-                placeholder="e.g. 10000"
-                value={applyFormAmount}
-                onChange={(e) => setApplyFormAmount(e.target.value)}
-                disabled={bankedCredits <= 0}
-                className="w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:opacity-50"
-              />
-            </div>
-            <p className="text-xs text-gray-400">✓ Requires existing banked balance.</p>
-            <Button variant="danger" disabled={bankedCredits <= 0} onClick={handleApply} className="w-full mt-1">
-              APPLY CREDITS
-            </Button>
-          </div>
-        </Card>
-      </div>
-
-      {/* History Table */}
       <Card padding={false}>
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <Clock size={16} className="text-gray-400" />
-          <h3 className="font-semibold text-gray-800">Global Banking Activity</h3>
+          <h3 className="font-semibold text-gray-800">Ship Banking Activity</h3>
         </div>
         <div className="p-4">
-          <Table columns={historyColumns} data={bankHistory} keyExtractor={(e) => e.id} />
+          <Table columns={historyColumns} data={displayHistory} keyExtractor={(e) => e.id} />
+        </div>
+      </Card>
+
+      <Card padding={false}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Wallet size={16} className="text-gray-400" />
+          <h3 className="font-semibold text-gray-800">Fleet Banked Surplus Totals</h3>
+        </div>
+        <div className="p-4">
+          <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+            Common Banked Available (Fleet): {commonBankedAvailable >= 0 ? '+' : ''}{commonBankedAvailable.toLocaleString()}
+          </div>
+          <Table columns={fleetColumns} data={fleetTotals || []} keyExtractor={(row) => row.shipId} />
         </div>
       </Card>
     </div>

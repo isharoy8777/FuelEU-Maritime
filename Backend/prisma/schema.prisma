@@ -13,14 +13,16 @@ datasource db {
 // ─── Route ───────────────────────────────────────────────────
 model Route {
   id              String   @id @default(uuid())
+  routeId         String   @unique @map("route_id")
   shipName        String
-  departurePort   String
-  arrivalPort     String
-  distance        Float
+  vesselType      String
   fuelType        String
+  year            Int
+  ghgIntensity    Float    @map("ghg_intensity")
   fuelConsumption Float
-  startDate       DateTime
-  endDate         DateTime
+  distance        Float
+  totalEmissions  Float
+  isBaseline      Boolean  @default(false) @map("is_baseline")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -32,20 +34,21 @@ model Route {
 // ─── Ship Compliance ─────────────────────────────────────────
 model ShipCompliance {
   id                 String   @id @default(uuid())
-  routeId            String
+  shipId             String   @map("ship_id")
   shipName           String
-  actualGHGIntensity Float
-  targetGHGIntensity Float
+  year               Int
+  cbGco2eq           Float    @map("cb_gco2eq")
+  actualGHGIntensity  Float
+  targetGHGIntensity  Float
   energy             Float
   complianceBalance  Float
   status             ComplianceStatus
-  year               Int
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  route Route @relation(fields: [shipId], references: [routeId], onDelete: Cascade)
 
-  @@map("ship_compliances")
+  @@map("ship_compliance")
 }
 
 enum ComplianceStatus {
@@ -56,12 +59,13 @@ enum ComplianceStatus {
 
 // ─── Bank Entry ──────────────────────────────────────────────
 model BankEntry {
-  id        String        @id @default(uuid())
-  shipName  String
-  amount    Float
-  year      Int
-  type      BankEntryType
-  createdAt DateTime      @default(now())
+  id            String        @id @default(uuid())
+  shipId        String        @map("ship_id")
+  shipName      String
+  amount        Float         @map("amount_gco2eq")
+  year          Int
+  type          BankEntryType
+  createdAt     DateTime      @default(now())
 
   @@map("bank_entries")
 }
@@ -87,13 +91,32 @@ model Pool {
 // ─── Pool Member ─────────────────────────────────────────────
 model PoolMember {
   id                String   @id @default(uuid())
-  poolId            String
+  poolId            String   @map("pool_id")
+  shipId            String   @map("ship_id")
   shipName          String
-  complianceBalance Float
+  cbBefore          Float    @map("cb_before")
+  cbAfter           Float    @map("cb_after")
   contributedAmount Float    @default(0)
   createdAt         DateTime @default(now())
 
   pool Pool @relation(fields: [poolId], references: [id], onDelete: Cascade)
 
   @@map("pool_members")
+}
+
+model ShipActivity {
+  id         String   @id @default(uuid())
+  shipId     String   @map("ship_id")
+  shipName   String
+  year       Int
+  activity   String
+  amount     Float?
+  cbBefore   Float?   @map("cb_before")
+  cbAfter    Float?   @map("cb_after")
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([shipId, year])
+  @@index([activity])
+  @@map("ship_activities")
 }

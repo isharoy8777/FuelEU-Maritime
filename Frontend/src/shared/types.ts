@@ -6,6 +6,7 @@ export type BankEntryType = 'BANK' | 'APPLY';
 
 export interface Route {
   id: string;
+  routeId?: string;
   vesselName: string;
   vesselType: string;
   fuelType: string;
@@ -54,6 +55,16 @@ export interface BankingSummary {
   available: number;
 }
 
+export interface BankingFleetTotal {
+  shipId: string;
+  shipName: string;
+  year: number;
+  currentCB: number;
+  bankedAvailable: number;
+  totalBanked: number;
+  totalApplied: number;
+}
+
 export interface PoolMember {
   id: string;
   shipName: string;
@@ -70,4 +81,13 @@ export interface Pool {
   totalCB: number;
   status: 'VALID' | 'INVALID';
   createdAt: string;
+  memberDetails?: Array<{
+    id: string;
+    shipId: string;
+    shipName: string;
+    cbBefore: number;
+    cbAfter: number;
+    contributedAmount: number;
+    status: ComplianceStatus;
+  }>;
 }
