@@ -4,12 +4,50 @@ import {
 import { Table } from '../components/Table';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
-import { mockComparisons, chartData, baselineRoute } from '../../api/mock';
-import type { RouteComparison } from '../../shared/types';
+import { mockRoutes } from '../../api/mock';
+import type { RouteComparison, Route } from '../../shared/types';
+import { useBaseline } from '../context/BaselineContext';
+import { useMemo } from 'react';
 
-const TARGET_GHG = 91.16;
+const TARGET_GHG = 89.3368;
 
 export function ComparePage() {
+  const { baselineRouteId } = useBaseline();
+
+  const baselineRoute = mockRoutes.find((r) => r.id === baselineRouteId);
+
+  // Dynamically calculate comparisons if baseline is selected
+  const comparisons: RouteComparison[] = useMemo(() => {
+    if (!baselineRoute) return [];
+    
+    return mockRoutes.map((r): RouteComparison => {
+      const ghgIntensity = r.ghgIntensity;
+      const baselineGhg = baselineRoute.ghgIntensity;
+      const percentDiff = ((ghgIntensity / baselineGhg) - 1) * 100;
+      const isCompliant = ghgIntensity <= TARGET_GHG;
+      
+      // Calculate a mock compliance balance dynamically (just illustrative based on ghg)
+      const mockCB = Math.floor((TARGET_GHG - ghgIntensity) * r.fuelConsumption * 123.4); 
+
+      return {
+        routeId: r.id,
+        vesselName: r.vesselName,
+        ghgIntensity,
+        percentDiff,
+        complianceLabel: isCompliant ? 'COMPLIANT' : 'NON-COMPLIANT',
+        complianceBalance: mockCB,
+      };
+    });
+  }, [baselineRoute]);
+
+  const chartData = useMemo(() => {
+    return mockRoutes.map((r) => ({
+      route: r.id,
+      ghg: r.ghgIntensity,
+      compliant: r.ghgIntensity <= TARGET_GHG,
+    }));
+  }, []);
+
   const columns = [
     { key: 'routeId', header: 'Route ID', render: (r: RouteComparison) => <span className="font-mono text-xs font-semibold text-gray-700">{r.routeId}</span> },
     { key: 'vesselName', header: 'Vessel' },
@@ -40,10 +78,14 @@ export function ComparePage() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="gradient-ocean px-6 py-4">
           <h2 className="text-white font-bold text-lg">Route Comparison Analysis</h2>
-          <p className="text-white/70 text-sm mt-0.5">
-            {mockComparisons.length} routes compared against baseline{' '}
-            <span className="font-semibold text-white">{baselineRoute.id} ({baselineRoute.vesselName})</span>
-          </p>
+          {baselineRoute ? (
+            <p className="text-white/70 text-sm mt-0.5">
+              {comparisons.length} routes compared against baseline{' '}
+              <span className="font-semibold text-white">{baselineRoute.id} ({baselineRoute.vesselName})</span>
+            </p>
+          ) : (
+            <p className="text-white/70 text-sm mt-0.5">No baseline route selected.</p>
+          )}
         </div>
         <div className="px-4 py-2 bg-indigo-50/50 border-t border-gray-100 flex items-center gap-6 text-sm">
           <div className="flex items-center gap-2"><span className="inline-block w-3 h-3 bg-emerald-500 rounded-sm" /> Compliant (below {TARGET_GHG} g/MJ)</div>
@@ -61,7 +103,7 @@ export function ComparePage() {
             <XAxis dataKey="route" tick={{ fontSize: 12 }} />
             <YAxis domain={[0, 120]} tick={{ fontSize: 12 }} unit=" g" />
             <Tooltip
-              formatter={(v: number) => [`${v} g/MJ`, 'GHG Intensity']}
+              formatter={(v: any) => [`${v} g/MJ`, 'GHG Intensity']}
               contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }}
             />
             <ReferenceLine y={TARGET_GHG} stroke="#FB923C" strokeDasharray="6 3" label={{ value: `Target: ${TARGET_GHG}`, position: 'right', fontSize: 11, fill: '#FB923C' }} />
@@ -78,23 +120,31 @@ export function ComparePage() {
       <Card padding={false}>
         <div className="px-5 py-4 border-b border-gray-100">
           <h3 className="font-semibold text-gray-800">Detailed Comparison</h3>
-          <p className="text-xs text-gray-400 mt-0.5">% difference calculated from baseline GHG: {baselineRoute.ghgIntensity} g/MJ</p>
+          {baselineRoute && (
+            <p className="text-xs text-gray-400 mt-0.5">% difference calculated from baseline GHG: {baselineRoute.ghgIntensity} g/MJ</p>
+          )}
         </div>
         <div className="p-4">
-          <Table columns={columns} data={mockComparisons} keyExtractor={(r) => r.routeId} />
+          {comparisons.length > 0 ? (
+            <Table columns={columns} data={comparisons} keyExtractor={(r) => r.routeId} />
+          ) : (
+            <p className="text-center text-sm text-gray-500 py-10">Please select a Baseline Route from the Routes page.</p>
+          )}
         </div>
       </Card>
 
       {/* Baseline summary */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-center gap-4">
-        <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <span className="text-white text-xs font-bold">B</span>
+      {baselineRoute && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex items-center gap-4">
+          <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">B</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-indigo-900">Baseline Route: {baselineRoute.id}</p>
+            <p className="text-xs text-indigo-600 mt-0.5">{baselineRoute.vesselName} — GHG: {baselineRoute.ghgIntensity} g/MJ</p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-indigo-900">Baseline Route: {baselineRoute.id}</p>
-          <p className="text-xs text-indigo-600 mt-0.5">{baselineRoute.vesselName} — GHG: {baselineRoute.ghgIntensity} g/MJ</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type {
-  Route, RouteComparison, BankEntry, BankingSummary, PoolMember, Pool,
-} from '../shared/types';
+  Route, BankEntry, BankingSummary, PoolMember, Pool,
+} from '../../shared/types';
 
 // ─── Routes Mock Data ──────────────────────────────────────────────────────────
 
@@ -32,24 +32,6 @@ export const mockRoutes: Route[] = [
   },
 ];
 
-// ─── Compare Mock Data ─────────────────────────────────────────────────────────
-
-export const mockComparisons: RouteComparison[] = [
-  { routeId: 'RTR-001', vesselName: 'MV Nordica', ghgIntensity: 82.4, percentDiff: -13.4, complianceLabel: 'COMPLIANT', complianceBalance: 456560 },
-  { routeId: 'RTR-003', vesselName: 'MV Atlantic Spirit', ghgIntensity: 67.8, percentDiff: -28.7, complianceLabel: 'COMPLIANT', complianceBalance: 952640 },
-  { routeId: 'RTR-004', vesselName: 'MV Baltic Wind', ghgIntensity: 91.16, percentDiff: 0.0, complianceLabel: 'COMPLIANT', complianceBalance: 0 },
-  { routeId: 'RTR-005', vesselName: 'MV Caspian Bridge', ghgIntensity: 103.7, percentDiff: 9.0, complianceLabel: 'NON-COMPLIANT', complianceBalance: -512990 },
-];
-
-export const baselineRoute = { id: 'RTR-002', vesselName: 'MV Polar Star', ghgIntensity: 95.1 };
-
-export const chartData = [
-  { route: 'RTR-001', ghg: 82.4, compliant: true },
-  { route: 'RTR-002', ghg: 95.1, compliant: false },
-  { route: 'RTR-003', ghg: 67.8, compliant: true },
-  { route: 'RTR-004', ghg: 91.16, compliant: true },
-  { route: 'RTR-005', ghg: 103.7, compliant: false },
-];
 
 // ─── Banking Mock Data ─────────────────────────────────────────────────────────
 

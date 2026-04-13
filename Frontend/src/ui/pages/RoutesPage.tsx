@@ -6,12 +6,15 @@ import { Button } from '../components/Button';
 import { KpiCard, StatCard } from '../components/Card';
 import { mockRoutes } from '../../api/mock';
 import type { Route, ComplianceStatus } from '../../shared/types';
+import { useBaseline } from '../context/BaselineContext';
 
 const FUEL_TYPES = ['All', 'VLSFO', 'MGO', 'LNG', 'HFO'];
 const YEARS = ['All', '2025', '2024', '2023'];
 const STATUSES: (ComplianceStatus | 'All')[] = ['All', 'SURPLUS', 'DEFICIT'];
 
 export function RoutesPage() {
+  const { baselineRouteId, setBaselineRouteId } = useBaseline();
+  
   const [fuelFilter, setFuelFilter] = useState('All');
   const [yearFilter, setYearFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<ComplianceStatus | 'All'>('All');
@@ -32,17 +35,20 @@ export function RoutesPage() {
 
   const columns = [
     { key: 'id', header: 'Route ID', render: (r: Route) => <span className="font-mono text-xs font-semibold text-gray-700">{r.id}</span> },
-    { key: 'vesselName', header: 'Vessel', render: (r: Route) => (
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-gray-800">{r.vesselName}</span>
-        {r.isBaseline && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">BASELINE</span>}
-      </div>
-    )},
+    { key: 'vesselName', header: 'Vessel', render: (r: Route) => {
+      const isBaseline = r.id === baselineRouteId;
+      return (
+        <div className="flex items-center gap-2">
+          <span className={`font-medium ${isBaseline ? 'text-indigo-800' : 'text-gray-800'}`}>{r.vesselName}</span>
+          {isBaseline && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">BASELINE</span>}
+        </div>
+      );
+    }},
     { key: 'vesselType', header: 'Type' },
     { key: 'fuelType', header: 'Fuel' },
     { key: 'year', header: 'Year', align: 'center' as const },
     { key: 'ghgIntensity', header: 'GHG (g/MJ)', align: 'right' as const, render: (r: Route) => (
-      <span className={r.ghgIntensity > 91.16 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+      <span className={r.ghgIntensity > 89.3368 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
         {r.ghgIntensity.toFixed(1)}
       </span>
     )},
@@ -50,12 +56,20 @@ export function RoutesPage() {
     { key: 'distance', header: 'Distance (nm)', align: 'right' as const, render: (r: Route) => r.distance.toLocaleString() },
     { key: 'totalEmissions', header: 'Emissions (tCO₂)', align: 'right' as const, render: (r: Route) => r.totalEmissions.toLocaleString() },
     { key: 'status', header: 'Status', align: 'center' as const, render: (r: Route) => <Badge variant={r.status} /> },
-    { key: 'actions', header: 'Actions', align: 'center' as const, render: (r: Route) => (
-      <Button size="sm" variant={r.isBaseline ? 'secondary' : 'ghost'} className="gap-1">
-        <Star size={12} />
-        {r.isBaseline ? 'Baseline' : 'Set Baseline'}
-      </Button>
-    )},
+    { key: 'actions', header: 'Actions', align: 'center' as const, render: (r: Route) => {
+      const isBaseline = r.id === baselineRouteId;
+      return (
+        <Button 
+          size="sm" 
+          variant={isBaseline ? 'secondary' : 'ghost'} 
+          className="gap-1"
+          onClick={() => setBaselineRouteId(r.id)}
+        >
+          <Star size={12} className={isBaseline ? 'fill-indigo-500 text-indigo-500' : ''} />
+          {isBaseline ? 'Baseline' : 'Set Baseline'}
+        </Button>
+      );
+    }},
   ];
 
   return (
