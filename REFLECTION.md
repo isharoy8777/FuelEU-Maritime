@@ -1,31 +1,19 @@
 # Reflection
 
-This project succeeded because the implementation loop stayed grounded in real code behavior: inspect current contracts, apply focused changes, then validate immediately.
+## Q1. What did you learn using AI agents?
 
-## What Worked Well
+Using AI agents in this project taught me that leaving all thinking to the agent is a bad choice. The agent is strong at execution when tasks are clearly defined, but weaker at ideation and product-level decision making on its own. I learned that prompt quality directly controls output quality: when prompts are specific and precise, results are useful; when prompts are vague, results are often mismatched.
 
-- Fast root-cause tracing across frontend and backend for route/comparison/banking/pooling mismatches.
-- Incremental fixes with quick diagnostics reduced regression risk.
-- Compatibility-first backend updates allowed the UI and tests to keep working while contracts were improved.
+## Q2. What were the efficiency gains compared to manual coding?
 
-## Key Improvements Completed
+Compared to fully manual coding, AI significantly improved speed once the initial architecture was in place. In manual coding, debugging can sometimes feel easier because I know exactly why I wrote each block and can trace intent quickly. However, AI helped a lot with repetitive implementation work, cross-layer boilerplate, and common error fixes. It reduced time spent on mechanical coding and allowed more focus on validating behavior and business rules.
 
-- Baseline persistence is now aligned across Routes and Compare.
-- Compare behavior is read-only and tied to selected baseline data.
-- Banking is ship-driven, with surplus/apply actions persisted and reflected in adjusted CB data.
-- Pooling supports live redistribution and persisted member snapshots (cbBefore/cbAfter).
-- Fleet-level totals and stronger null-safe rendering were added in the frontend.
+## Q3. What improvements would you make next time?
 
-## Lessons Learned
+I would improve this project in three directions:
 
-- Canonical identifiers must be consistent end-to-end; mixing id and routeId creates subtle UI mismatches.
-- Validation must happen continuously, not after batching many edits.
-- For cross-page behavior rules, writing explicit data-effect contracts early prevents accidental coupling.
+1. Add a proper authentication and authorization system, so access control is role-based and secure.
+2. Build a CSV upload pipeline for ship and route data, so real datasets can be imported without manual entry.
+3. Add an AI forecasting module to estimate future compliance balance (CB) per ship from historical trends and display predictions in the dashboard.
 
-## What I Would Do Earlier Next Time
-
-- Lock API contracts first and generate shared types from the backend shape.
-- Add explicit integration tests for page-effect rules:
-  - baseline affects compare only
-  - banking affects pooling inputs
-  - pooling does not mutate compare source data
+Overall, AI agents are best used as execution accelerators, not as replacements for engineering judgment. The best workflow is human-led planning with AI-assisted implementation, followed by strict validation.
